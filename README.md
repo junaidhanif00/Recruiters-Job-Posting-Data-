@@ -1,73 +1,112 @@
 # Recruiters-Job-Posting-Data-
 
-
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from bs4 import BeautifulSoup as bs
-import pandas as pd
+from bs4 import BeautifulSoup
 import time
+import pandas as pd
 
-# Setting up Chrome options
-chrome_options = Options()
-chrome_options.add_argument("--start-maximized")  # Start browser maximized
-chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-chrome_options.add_argument("--headless")  # Run in headless mode for efficiency
+# Creating a webdriver instance
+driver = webdriver.Chrome("chromedriver.exe")
 
-# Specifying the path to chromedriver
-service = Service("chromedriver.exe")
-driver = webdriver.Chrome(service=service, options=chrome_options)
+# Opening LinkedIn's login page
+driver.get("https://linkedin.com/uas/login")
 
-data_list = []
+# waiting for the page to load
+time.sleep(5)
 
-# Loop through pages 11 to 12
-for page in range(1, 1):
-    #url = f'https://www.daraz.pk/womens-socks-stockings/?page={page}spm=a2a0e.searchlistcategory.cate_8_4.3.1d094eadEYvvVn'
-    url = f'https://www.daraz.pk/catalog/?_keyori=ss&from=search_history&page=102&q=Storage%20Bag&spm=a2a0e.searchlistcategory.search.4.337514a2D3VMqP&sugg=Storage%20Bag_2_1'
-    driver.get(url)
-    time.sleep(5)  # Allow time for page to load
+# entering username
+username = driver.find_element("id", "username")
+username.send_keys("")
 
-    # Get page source and parse with BeautifulSoup
+# entering password
+pword = driver.find_element("id", "password")
+pword.send_keys("")
+
+# Clicking on the login button
+login_btn = driver.find_element(By.XPATH, '/html/body/div/main/div[2]/div[1]/form/div[3]/button')
+time.sleep(10)
+login_btn.click()
+time.sleep(60)
+
+# Prompting the user to enter keywords for job search
+keywords = input("Enter keywords for job search:")
+
+# updating the LinkedIn job search URL with the entered keywords
+main_url = f"https://www.linkedin.com/jobs/search/?keywords={keywords}&currentJobId=3354274229&f_JT=F&f_TPR=r86400&f_WT=2"
+
+# Scrape all pages of job search
+
+for page_num in range(1, 5):
+    # Updating the LinkedIn job search URL with the page number
+    page_url = f"{main_url}&start={25 * (page_num - 1)}"
+    # Opening the job search page
+    driver.get(page_url)
+    time.sleep(30)
+    while True:
+        last_height = driver.execute_script('return document.body.scrollHeight')
+        driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+        time.sleep(30)  # Wait for 5 seconds for the page to load more job postings
+        new_height = driver.execute_script('return document.body.scrollHeight')
+        if new_height == last_height:
+            break
+
+    # Getting the page source
     page_source = driver.page_source
-    soup = bs(page_source, 'html.parser')
 
-    # Find product blocks
-    blocks = soup.find_all('div', {'class': 'Bm3ON'})
+    # Parsing the page source using Beautiful Soup
+    soup = BeautifulSoup(page_source, 'html.parser')
 
-    for data in blocks:
-        product_name_element = data.find('div', {'class': 'RfADt'})
-        product_link_element = data.find('a', href=True)
-        image_link_element = data.find('img', src=True)
-        product_price_element = data.find('span', {'class': 'ooOxS'})
-        product_review_element = data.find('div', {'class': '_6uN7R'})  # Find correct class for reviews    
-        seller_location_element = data.find('span', {'class': 'oa6ri'})
+    data = []
 
-        # Extract text or default to 'Not Found' if element is None
-        product_name = product_name_element.get_text(strip=True) if product_name_element else 'Not Found'
-        product_link = product_link_element['href'] if product_link_element else 'Not Found'
-        image_link = image_link_element['src'] if image_link_element else 'Not Found'
-        product_price = product_price_element.get_text(strip=True) if product_price_element else 'Not Found'
-        product_review = product_review_element.get_text(strip=True) if product_review_element else 'Not Found'
-        seller_location = seller_location_element.get_text(strip=True) if seller_location_element else 'Not Found'
+    job_postings = soup.find_all('li', {'class': 'jobs-search-results__list-item'})
 
-        # Append data to the list
-        data_list.append({
-            'Product Name': product_name,
-            'Product Link': product_link,
-            'Image Link': image_link,
-            'Product Price': product_price,
-            'Product Review': product_review,
-            'Seller Location': seller_location
-        })
+    for job_posting in job_postings:
+        try:
+            job_title = job_posting.find('a', class_='job-card-list__title').get_text().strip()
+        except AttributeError:
+            job_title = None
 
-# Create a DataFrame from the list of dictionaries
-df = pd.DataFrame(data_list)
+        try:
+            job_title_url = 'https://www.linkedin.com' + job_posting.find('a', class_='job-card-list__title').get('href').strip()
+        except AttributeError:
+            job_title_url = None
 
-# Save DataFrame to CSV file
-df.to_csv('darazstoragebags.csv', index=False)
+        try:
+            company_name = job_posting.find('a', class_='job-card-container__company-name').get_text().strip()
+        except AttributeError:
+            company_name = None
 
-# Closing the webdriver
-driver.quit()
+        try:
+            company_name_url = 'https://www.linkedin.com' + job_posting.find('a', class_='job-card-container__company-name').get('href').strip()
+        except AttributeError:
+            company_name_url = None
 
-print("Scraping completed and data saved to daraz_health_beauty_tools.csv.")
+        try:
+            location = job_posting.find('li', class_='job-card-container__metadata-item').get_text().strip()
+        except AttributeError:
+            location = None
+
+        try:
+            post_hours = job_posting.find('li', class_='job-card-container__listed-time').get_text().strip()
+        except AttributeError:
+            post_hours = None
+
+        try:
+            remote = job_posting.find('li', class_='job-card-container__metadata-item--workplace-type').get_text().strip()
+        except AttributeError:
+            remote = None
+
+        #print(remote)
+       # print(job_title)
+       # print(job_title_url)
+       # print(company_name)
+       # print(company_name_url)
+       # print(location)
+       # print(post_hours)
+
+        data.append({'job_title':job_title, 'title_url':job_title_url, 'company_name':company_name, 'company_url':company_name_url,
+                    'location':location,'post_hours':post_hours, 'remote':remote})
+      #Save the data to a CSV file
+        df = pd.DataFrame(data)
+        df.to_csv('dataanalyst.csv', mode='a', header=False)
